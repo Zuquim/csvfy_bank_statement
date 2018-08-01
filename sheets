@@ -32,7 +32,10 @@ def do_xls(pl):
     plv = pl.get_values()
     s = ''
     for line in plv:
-        date = line[0].replace('\xa0', '').replace(' ', '')
+        try:
+            date = line[0].replace('\xa0', '').replace(' ', '')
+        except AttributeError:
+            break
         descr = line[1]
         value = line[2]
         balance = line[3]
@@ -66,18 +69,7 @@ def do_xml(pl):
     return s
 
 
-print(
-    '\nChanging work directory from {} to ~/Downloads\n'.format(abspath(curdir))
-)
-home = environ['HOME']
-chdir(home + '/Downloads')
-
-program = 'sheets'
-args = argv[1:]
-if len(args) < 1 or len(args) > 2:
-    print('\nUsage:\t{} <itau|nubank month_number>\n'.format(program))
-    exit(1)
-if len(args) == 1 and args[0] == 'itau':
+def itau():
     input_file = 'extrato.xls'
     if not exists(input_file):
         print(
@@ -92,7 +84,6 @@ if len(args) == 1 and args[0] == 'itau':
             input_file,
             usecols=[1, 4, 5, 6],
             skiprows=10,
-            skipfooter=13,
             thousands='.'
         )
         raw_output = do_xls(pl)
@@ -111,11 +102,14 @@ if len(args) == 1 and args[0] == 'itau':
     output_file = 'output_itau_{}.csv'.format(strftime("%y-%m-%d_%Hh%Mm"))
     df.to_csv(output_file, sep='\t', encoding='utf-8')
     print('\nOutput file saved as: {}\n'.format(output_file))
-    exit(0)
-elif len(args) == 2 and args[0] == 'nubank' and 0 < int(args[1]) <= 12:
+
+
+def nubank():
     if len(args[1]) == 1:
-        args[1] = '0' + args[1]
-    input_file = 'nubank-{}-{}.csv'.format(strftime("%Y"), args[1])
+        month = '0' + args[1]
+    else:
+        month = args[1]
+    input_file = 'nubank-{}-{}.csv'.format(strftime("%Y"), month)
     if not exists(input_file):
         print(
             '\nFile "{}" not found in current directory!\n'.format(input_file)
@@ -124,8 +118,29 @@ elif len(args) == 2 and args[0] == 'nubank' and 0 < int(args[1]) <= 12:
     pl = pd.read_csv(input_file)
     output_file = do_csv(pl)
     print('\nOutput file saved as: {}\n'.format(output_file))
+
+
+def error_msg(program, args):
+    print('\nUsage:\t\t{} <gui|itau|nubank month_number>\n'.format(program))
+    print('You typed:\t{} {}\n'.format(program, ' '.join(args)))
+
+
+print(
+    '\nChanging work directory from {} to ~/Downloads\n'.format(abspath(curdir))
+)
+home = environ['HOME']
+chdir(home + '/Downloads')
+program = 'sheets'
+args = argv[1:]
+if len(args) < 1 or len(args) > 2:
+    error_msg(program, args)
+    exit(1)
+if len(args) == 1 and args[0] == 'itau':
+    itau()
+    exit(0)
+elif len(args) == 2 and args[0] == 'nubank' and 0 < int(args[1]) <= 12:
+    nubank()
     exit(0)
 else:
-    print('\nUsage:\t\t{} <itau|nubank month_number>\n'.format(program))
-    print('You typed:\t{} {}\n'.format(program, ' '.join(args)))
+    error_msg(program, args)
     exit(1)

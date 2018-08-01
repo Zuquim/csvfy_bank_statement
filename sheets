@@ -1,0 +1,131 @@
+#!/Library/Frameworks/Python.framework/Versions/3.7/bin/python3.7
+from os.path import exists, abspath, curdir
+from os import environ, chdir
+from sys import argv, exit
+from time import strftime
+import pandas as pd
+import re
+
+
+def do_csv(pl):
+    s = ''
+    for date, descr, value in zip(pl['date'], pl['title'], pl['amount']):
+        s += '{}\t{}\t{}\t{}\t{}\n'.format(
+            date,
+            date.split('-')[2],
+            date.split('-')[1],
+            descr,
+            str(value).replace('.', ','))
+    print(s)
+    temp_list = []
+    for item in s.splitlines():
+        temp_list.append(item.split('\t'))
+    df = pd.DataFrame(
+        temp_list, columns=['Data', 'Dia', 'Mês', 'Lançamento', 'Valor']
+    )
+    output_file = 'output_nubank_{}.csv'.format(strftime("%y-%m-%d_%Hh%Mm"))
+    df.to_csv(output_file, sep='\t', encoding='utf-8')
+    return output_file
+
+
+def do_xls(pl):
+    plv = pl.get_values()
+    s = ''
+    for line in plv:
+        date = line[0].replace('\xa0', '').replace(' ', '')
+        descr = line[1]
+        value = line[2]
+        balance = line[3]
+        s += '{}\t{}\t{}\t{}\t{}\t{}\n'.format(
+            re.sub(r'$', '/2018', date),
+            re.sub(r'/..$', '', date),
+            re.sub(r'^../', '', date),
+            str(descr).replace(r'^nan$', ''),
+            str(value).replace('nan', '').replace('.', ','),
+            str(balance).replace('nan', '').replace('.', ',')
+        )
+    return s
+
+
+def do_xml(pl):
+    s = ''
+    for date, descr, value, balance in zip(
+            pl[0][1], pl[0][4], pl[0][5], pl[0][6]
+    ):
+        if not any(
+                term in str(date) for term in ['nan', 'Data', 'Nome', 'Extrat']
+        ):
+            s += '{}\t{}\t{}\t{}\t{}\t{}\n'.format(
+                re.sub(r'$', '/2018', str(date)),
+                re.sub(r'/..$', '', str(date)),
+                re.sub(r'^../', '', str(date)),
+                str(descr).replace(r'^nan$', ''),
+                str(value).replace('nan', '').replace('.', ','),
+                str(balance).replace('nan', '').replace('.', ',')
+            )
+    return s
+
+
+print(
+    '\nChanging work directory from {} to ~/Downloads\n'.format(abspath(curdir))
+)
+home = environ['HOME']
+chdir(home + '/Downloads')
+
+program = 'sheets'
+args = argv[1:]
+if len(args) < 1 or len(args) > 2:
+    print('\nUsage:\t{} <itau|nubank month_number>\n'.format(program))
+    exit(1)
+if len(args) == 1 and args[0] == 'itau':
+    input_file = 'extrato.xls'
+    if not exists(input_file):
+        print(
+            '\nFile "{}" not found in current directory!\n'.format(input_file)
+        )
+        exit(1)
+    try:
+        pl = pd.read_html(input_file) #, thousands='.', decimal=',')
+        raw_output = do_xml(pl)
+    except ValueError:
+        pl = pd.read_excel(
+            input_file,
+            usecols=[1, 4, 5, 6],
+            skiprows=10,
+            skipfooter=13,
+            thousands='.'
+        )
+        raw_output = do_xls(pl)
+    except Exception as e:
+        print(e)
+        exit(1)
+    print(raw_output)
+    temp_list = []
+    for item in raw_output.splitlines():
+        temp_list.append(item.split('\t'))
+    df = pd.DataFrame(
+        temp_list, columns=[
+            'Data', 'Dia', 'Mês', 'Lançamento', 'Valor', 'Saldo'
+        ]
+    )
+    output_file = 'output_itau_{}.csv'.format(strftime("%y-%m-%d_%Hh%Mm"))
+    df.to_csv(output_file, sep='\t', encoding='utf-8')
+    print('\nOutput file saved as: {}\n'.format(output_file))
+    exit(0)
+elif len(args) == 2 and args[0] == 'nubank' and 0 < int(args[1]) <= 12:
+    if len(args[1]) == 1:
+        args[1] = '0' + args[1]
+    input_file = 'nubank-{}-{}.csv'.format(strftime("%Y"), args[1])
+    if not exists(input_file):
+        print(
+            '\nFile "{}" not found in current directory!\n'.format(input_file)
+        )
+        exit(1)
+    pl = pd.read_csv(input_file)
+    output_file = do_csv(pl)
+    print('\nOutput file saved as: {}\n'.format(output_file))
+    exit(0)
+else:
+    print('\nUsage:\t\t{} <itau|nubank month_number>\n'.format(program))
+    print('You typed:\t{} {}\n'.format(program, ' '.join(args)))
+    exit(1)
